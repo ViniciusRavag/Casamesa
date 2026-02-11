@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Mapa de Assentos - Casamento</title>
     
     <!-- React Core -->
@@ -20,10 +20,10 @@
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Lato:wght@300;400;700&display=swap" rel="stylesheet">
 
     <style>
-        body { font-family: 'Lato', sans-serif; background-color: #F9F6F2; }
+        body { font-family: 'Lato', sans-serif; background-color: #F9F6F2; overflow: hidden; /* Evita scroll duplo */ }
         h1, h2, h3, .font-serif { font-family: 'Playfair Display', serif; }
         
-        /* Animação Personalizada - Apenas escala, sem afetar posição */
+        /* Animação para destacar o lugar */
         @keyframes pulse-seat {
             0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(244, 63, 94, 0.7); }
             70% { transform: scale(1.2); box-shadow: 0 0 0 10px rgba(244, 63, 94, 0); }
@@ -33,6 +33,7 @@
             animation: pulse-seat 1.5s infinite;
         }
         
+        /* Scroll suave e sem barra visual */
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
     </style>
@@ -42,23 +43,47 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect, useMemo } = React;
+        const { useState, useEffect, useMemo, useRef } = React;
 
-        // --- CONFIGURAÇÃO ---
-        const TOTAL_GROUPS = 3;
-        const SEGMENTS_PER_GROUP = 14;
+        // --- CONFIGURAÇÃO DO LAYOUT (CORRIGIDO V9) ---
+        const TABLE_CONFIG = [
+            // --- DECK (ZONA: DECK) ---
+            { id: 1, name: "Mesa 1", zone: "deck", col: 1, segments: 10 },
+            { id: 4, name: "Mesa 4", zone: "deck", col: 1, segments: 2 }, 
+
+            // --- SALÃO FILEIRA 1 (Mesa 2 SOZINHA) ---
+            { id: 2, name: "Mesa 2", zone: "salao", col: 1, segments: 10 },
+
+            // --- SALÃO FILEIRA 2 (Mesa 3 + Mesa 5) ---
+            { id: 3, name: "Mesa 3", zone: "salao", col: 2, segments: 7 },
+            { id: 5, name: "Mesa 5", zone: "salao", col: 2, segments: 4 },
+
+            // --- SALÃO FILEIRA 3 (Mesa 6 + Mesa 7) ---
+            { id: 6, name: "Mesa 6", zone: "salao", col: 3, segments: 4 },
+            { id: 7, name: "Mesa 7", zone: "salao", col: 3, segments: 3 }
+        ];
 
         // Gerador de Dados Iniciais
         const generateInitialSeats = () => {
             const seats = [];
-            for (let group = 1; group <= TOTAL_GROUPS; group++) {
-                for (let i = 0; i < SEGMENTS_PER_GROUP; i++) {
-                    seats.push({ id: `g${group}-s${i}-l`, tableGroupId: group, segmentIndex: i, positionType: 'left', guestName: '', groupTag: '' });
-                    seats.push({ id: `g${group}-s${i}-r`, tableGroupId: group, segmentIndex: i, positionType: 'right', guestName: '', groupTag: '' });
-                    if (i === 0) seats.push({ id: `g${group}-top`, tableGroupId: group, segmentIndex: i, positionType: 'top', guestName: '', groupTag: '' });
-                    if (i === SEGMENTS_PER_GROUP - 1) seats.push({ id: `g${group}-bottom`, tableGroupId: group, segmentIndex: i, positionType: 'bottom', guestName: '', groupTag: '' });
+            
+            TABLE_CONFIG.forEach(table => {
+                for (let i = 0; i < table.segments; i++) {
+                    // Laterais (Sempre existem)
+                    seats.push({ id: `t${table.id}-s${i}-l`, tableGroupId: table.id, segmentIndex: i, positionType: 'left', guestName: '', groupTag: '' });
+                    seats.push({ id: `t${table.id}-s${i}-r`, tableGroupId: table.id, segmentIndex: i, positionType: 'right', guestName: '', groupTag: '' });
+                    
+                    // Ponta Superior (Apenas no primeiro segmento)
+                    if (i === 0) {
+                        seats.push({ id: `t${table.id}-top`, tableGroupId: table.id, segmentIndex: i, positionType: 'top', guestName: '', groupTag: '' });
+                    }
+                    
+                    // Ponta Inferior (Apenas no último segmento)
+                    if (i === table.segments - 1) {
+                        seats.push({ id: `t${table.id}-bottom`, tableGroupId: table.id, segmentIndex: i, positionType: 'bottom', guestName: '', groupTag: '' });
+                    }
                 }
-            }
+            });
             return seats;
         };
 
@@ -66,7 +91,8 @@
         function App() {
             const [view, setView] = useState('welcome'); 
             const [seats, setSeats] = useState(() => {
-                const saved = localStorage.getItem('wedding_seats_final_v4');
+                // Nova chave para forçar recriação do layout correto
+                const saved = localStorage.getItem('wedding_seats_v9_layout_corrected');
                 return saved ? JSON.parse(saved) : generateInitialSeats();
             });
             
@@ -75,11 +101,13 @@
             const [editingSeat, setEditingSeat] = useState(null);
             const [tempName, setTempName] = useState('');
             const [tempGroup, setTempGroup] = useState('');
+            const scrollContainerRef = useRef(null);
 
             useEffect(() => {
-                localStorage.setItem('wedding_seats_final_v4', JSON.stringify(seats));
+                localStorage.setItem('wedding_seats_v9_layout_corrected', JSON.stringify(seats));
             }, [seats]);
 
+            // Handlers
             const handleUpdateSeat = () => {
                 if (!editingSeat) return;
                 const updatedSeats = seats.map((s) => 
@@ -105,22 +133,22 @@
                     idsToHighlight = groupMembers.map(s => s.id);
                 }
                 setFoundSeatIds(idsToHighlight);
-                setSearchTerm(''); // Limpa a busca para mostrar o mapa
+                setSearchTerm('');
                 
                 setTimeout(() => {
                     const element = document.getElementById(`seat-wrapper-${primarySeat.id}`);
-                    if (element) element.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+                    if (element) {
+                        element.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+                    }
                 }, 100);
             };
 
-            // Função para limpar seleção ao clicar fora
-            const handleBackgroundClick = (e) => {
-                // Se clicar no fundo (não em um botão ou input), limpa a seleção
+            const handleBackgroundClick = () => {
                 setFoundSeatIds([]);
             };
 
             const totalGuests = seats.filter(s => s.guestName.trim() !== '').length;
-            const totalCapacity = 90;
+            const totalCapacity = seats.length; 
 
             // --- COMPONENTES VISUAIS ---
 
@@ -129,7 +157,6 @@
                 const isSelected = foundSeatIds.includes(seat.id);
                 const isEditing = editingSeat?.id === seat.id;
                 
-                // Classes de posicionamento (APLICADAS AO WRAPPER, NÃO AO BOTÃO)
                 let wrapperPosClasses = '';
                 switch (seat.positionType) {
                     case 'top': wrapperPosClasses = '-top-4 left-1/2 -translate-x-1/2'; break;
@@ -139,13 +166,11 @@
                 }
 
                 return (
-                    // WRAPPER: Segura a posição absoluta e o alinhamento central
                     <div 
                         id={`seat-wrapper-${seat.id}`}
-                        className={`absolute w-6 h-6 flex items-center justify-center z-20 ${wrapperPosClasses}`}
-                        onClick={(e) => e.stopPropagation()} // Impede que o clique na cadeira desmarque ela mesma
+                        className={`absolute w-5 h-5 flex items-center justify-center z-20 ${wrapperPosClasses}`}
+                        onClick={(e) => e.stopPropagation()}
                     >
-                        {/* BOTÃO: Cuida apenas do visual e da animação de escala */}
                         <button
                             onClick={() => {
                                 if (view === 'host') {
@@ -157,17 +182,17 @@
                             disabled={view === 'guest'}
                             className={`
                                 w-full h-full rounded-full border flex items-center justify-center transition-all duration-300 shadow-sm
-                                ${isSelected ? 'bg-rose-500 border-rose-600 text-white animate-pulse-seat z-50' : ''}
+                                ${isSelected ? 'bg-rose-500 border-rose-600 text-white animate-pulse-seat z-50 scale-125' : ''}
                                 ${isEditing ? 'bg-blue-500 border-blue-600 ring-4 ring-blue-200 z-50' : ''}
                                 ${!isSelected && !isEditing && isOccupied ? 'bg-emerald-100 border-emerald-300 text-emerald-800' : ''}
                                 ${!isSelected && !isEditing && !isOccupied ? 'bg-white border-slate-300 hover:border-slate-400' : ''}
                             `}
-                            title={seat.guestName ? `${seat.guestName} ${seat.groupTag ? `(${seat.groupTag})` : ''}` : "Lugar Vazio"}
+                            title={seat.guestName || "Lugar Vazio"}
                         >
                             {isOccupied ? (
-                                <i className={`fa-solid fa-user text-[10px] ${isSelected ? 'text-white' : ''}`}></i>
+                                <i className={`fa-solid fa-user text-[8px] ${isSelected ? 'text-white' : ''}`}></i>
                             ) : (
-                                <div className="w-1.5 h-1.5 bg-slate-200 rounded-full" />
+                                <div className="w-1 h-1 bg-slate-200 rounded-full" />
                             )}
                         </button>
                     </div>
@@ -176,15 +201,19 @@
 
             const TableSegment = ({ groupId, index, isLast }) => {
                 const segmentSeats = seats.filter(s => s.tableGroupId === groupId && s.segmentIndex === index);
+                
+                const borderClass = isLast 
+                    ? 'border-2 border-t-0 rounded-b-lg' 
+                    : index === 0 
+                        ? 'border-2 border-b-2 rounded-t-lg' 
+                        : 'border-x-2 border-b-2 rounded-none';
+
                 return (
                     <div className={`
-                        relative w-20 h-14 bg-white border-x-2 border-t-2 border-stone-300 flex items-center justify-center
-                        ${isLast ? 'border-b-2 rounded-b-lg' : 'border-b border-stone-200'}
-                        ${index === 0 ? 'rounded-t-lg' : ''}
+                        relative w-20 h-12 bg-white border-stone-300 flex items-center justify-center
+                        ${borderClass}
                     `}>
-                        <span className="text-[10px] font-mono text-stone-400 select-none">
-                            {groupId}-{index + 1}
-                        </span>
+                        <div className="absolute w-full h-[1px] bg-stone-100 top-0"></div>
                         {segmentSeats.map(seat => (
                             <Chair key={seat.id} seat={seat} />
                         ))}
@@ -192,30 +221,35 @@
                 );
             };
 
-            const LongTable = ({ groupId }) => (
-                <div className="flex flex-col items-center flex-shrink-0" onClick={(e) => e.stopPropagation()}>
-                    <div className="mb-6 text-center sticky left-0 z-10">
-                        <h3 className="font-serif text-lg text-rose-900 font-bold bg-[#F9F6F2]/80 backdrop-blur px-2 rounded border border-rose-100/50">Mesa {groupId}</h3>
+            const LongTable = ({ config }) => (
+                <div className="flex flex-col items-center flex-shrink-0 mb-8" onClick={(e) => e.stopPropagation()}>
+                    <div className="mb-2 text-center sticky left-0 z-10">
+                        <h3 className="font-serif text-xs text-rose-900 font-bold bg-[#F9F6F2]/90 backdrop-blur px-2 rounded border border-rose-100/50">{config.name}</h3>
                     </div>
-                    <div className="flex flex-col shadow-xl">
-                        {Array.from({ length: SEGMENTS_PER_GROUP }).map((_, index) => (
-                            <TableSegment key={index} groupId={groupId} index={index} isLast={index === SEGMENTS_PER_GROUP - 1} />
+                    <div className="flex flex-col shadow-lg shadow-stone-200/50">
+                        {Array.from({ length: config.segments }).map((_, index) => (
+                            <TableSegment 
+                                key={index} 
+                                groupId={config.id} 
+                                index={index} 
+                                isLast={index === config.segments - 1} 
+                            />
                         ))}
                     </div>
-                    <div className="mt-4 w-16 h-2 bg-stone-900/10 rounded-full blur-sm"></div>
                 </div>
             );
 
-            // --- VIEW: WELCOME ---
+            // --- TELAS ---
+
             if (view === 'welcome') {
                 return (
-                    <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center">
+                    <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center overflow-y-auto">
                         <div className="bg-white p-8 rounded-2xl shadow-xl max-w-md w-full border border-stone-100">
                             <div className="w-16 h-16 bg-rose-50 rounded-full flex items-center justify-center mx-auto mb-6">
                                 <i className="fa-solid fa-heart text-2xl text-rose-500"></i>
                             </div>
                             <h1 className="text-3xl font-serif text-slate-800 mb-2">Recepção do Casamento</h1>
-                            <p className="text-slate-500 mb-8">Encontre seu lugar e o de sua família no mapa.</p>
+                            <p className="text-slate-500 mb-8">Encontre seu lugar no mapa.</p>
                             
                             <button onClick={() => setView('guest')} className="w-full bg-slate-800 text-white py-3 rounded-xl mb-3 font-medium hover:bg-slate-700 transition flex items-center justify-center gap-3">
                                 <i className="fa-solid fa-magnifying-glass"></i>
@@ -231,10 +265,10 @@
                 );
             }
 
-            // --- VIEW: MAIN APP ---
             return (
-                <div className="min-h-screen font-sans flex flex-col" onClick={handleBackgroundClick}>
-                    <header className="bg-white/90 backdrop-blur-md shadow-sm border-b border-stone-100 sticky top-0 z-50 h-14" onClick={(e) => e.stopPropagation()}>
+                <div className="h-screen w-screen font-sans flex flex-col bg-[#F9F6F2] overflow-hidden" onClick={handleBackgroundClick}>
+                    {/* Header */}
+                    <header className="bg-white/90 backdrop-blur-md shadow-sm border-b border-stone-100 h-14 flex-shrink-0 z-50" onClick={(e) => e.stopPropagation()}>
                         <div className="max-w-md mx-auto px-4 h-full flex items-center justify-between">
                             <div className="flex items-center gap-2 cursor-pointer" onClick={() => setView('welcome')}>
                                 <i className="fa-solid fa-heart text-rose-500"></i>
@@ -253,72 +287,108 @@
                         </div>
                     </header>
 
-                    <main className="flex-1 overflow-hidden flex flex-col relative">
-                        <div className="absolute top-4 left-0 right-0 z-40 px-4 max-w-md mx-auto" onClick={(e) => e.stopPropagation()}>
-                            <div className="relative shadow-xl rounded-full">
-                                <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
-                                    <i className="fa-solid fa-magnifying-glass text-slate-400"></i>
+                    {/* Busca */}
+                    <div className="absolute top-16 left-0 right-0 z-40 px-4 max-w-md mx-auto" onClick={(e) => e.stopPropagation()}>
+                        <div className="relative shadow-xl rounded-full">
+                            <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
+                                <i className="fa-solid fa-magnifying-glass text-slate-400"></i>
+                            </div>
+                            <input
+                                type="text"
+                                placeholder={view === 'guest' ? "Digite seu nome..." : "Buscar convidado..."}
+                                className="w-full pl-11 pr-4 py-3 bg-white/95 backdrop-blur rounded-full border border-stone-200/50 outline-none text-slate-700 placeholder:text-slate-400 text-sm font-medium focus:ring-2 focus:ring-rose-200"
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                onFocus={() => setFoundSeatIds([])}
+                            />
+                            {searchResults.length > 0 && (
+                                <div className="absolute top-full left-4 right-4 mt-2 bg-white rounded-2xl shadow-2xl border border-slate-100 max-h-52 overflow-y-auto z-50">
+                                    {searchResults.map(seat => (
+                                        <button key={seat.id} onClick={() => selectGuestSeat(seat)} className="w-full text-left px-4 py-3 hover:bg-rose-50 border-b border-slate-50 flex items-center justify-between group last:border-0">
+                                            <div>
+                                                <div className="font-medium text-slate-700 truncate text-sm">{seat.guestName}</div>
+                                                {seat.groupTag && <div className="text-[10px] text-slate-400 flex items-center gap-1"><i className="fa-solid fa-users text-[10px]"></i> {seat.groupTag}</div>}
+                                            </div>
+                                            <span className="text-[10px] font-bold text-rose-500 bg-rose-50 px-2 py-0.5 rounded-full">Mesa {seat.tableGroupId}</span>
+                                        </button>
+                                    ))}
                                 </div>
-                                <input
-                                    type="text"
-                                    placeholder={view === 'guest' ? "Digite seu nome..." : "Buscar convidado..."}
-                                    className="w-full pl-11 pr-4 py-3 bg-white/95 backdrop-blur rounded-full border border-stone-200/50 outline-none text-slate-700 placeholder:text-slate-400 text-sm font-medium focus:ring-2 focus:ring-rose-200"
-                                    value={searchTerm}
-                                    onChange={(e) => setSearchTerm(e.target.value)}
-                                    onFocus={() => setFoundSeatIds([])} // Limpa seleção ao focar para pesquisar novamente
-                                />
-                                {searchResults.length > 0 && (
-                                    <div className="absolute top-full left-4 right-4 mt-2 bg-white rounded-2xl shadow-2xl border border-slate-100 max-h-52 overflow-y-auto z-50">
-                                        {searchResults.map(seat => (
-                                            <button key={seat.id} onClick={() => selectGuestSeat(seat)} className="w-full text-left px-4 py-3 hover:bg-rose-50 border-b border-slate-50 flex items-center justify-between group last:border-0">
-                                                <div>
-                                                    <div className="font-medium text-slate-700 truncate text-sm">{seat.guestName}</div>
-                                                    {seat.groupTag && <div className="text-[10px] text-slate-400 flex items-center gap-1"><i className="fa-solid fa-users text-[10px]"></i> {seat.groupTag}</div>}
-                                                </div>
-                                                <span className="text-[10px] font-bold text-rose-500 bg-rose-50 px-2 py-0.5 rounded-full">Mesa {seat.tableGroupId}</span>
-                                            </button>
-                                        ))}
-                                    </div>
-                                )}
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Notificação Encontrado */}
+                    {foundSeatIds.length > 0 && view === 'guest' && (
+                        <div className="absolute top-32 left-4 right-4 z-30 transition-all duration-300 pointer-events-none">
+                            <div className="bg-slate-800/90 backdrop-blur text-white rounded-xl p-3 text-center shadow-lg">
+                                <p className="font-medium text-sm">Encontrado! <span className="text-rose-300">{foundSeatIds.length > 1 ? `Você e mais ${foundSeatIds.length - 1} pessoas` : 'Seu lugar foi localizado'}</span></p>
                             </div>
                         </div>
+                    )}
 
-                        {foundSeatIds.length > 0 && view === 'guest' && (
-                            <div className="absolute top-20 left-4 right-4 z-30 transition-all duration-300 pointer-events-none">
-                                <div className="bg-slate-800 text-white rounded-xl p-3 text-center shadow-lg">
-                                    <p className="font-medium text-sm">Encontrado! <span className="text-rose-300">{foundSeatIds.length > 1 ? `Você e mais ${foundSeatIds.length - 1} pessoa(s)` : 'Seu lugar foi localizado'}</span></p>
-                                    <div className="flex items-center justify-center gap-1 mt-1 text-slate-400 text-xs">
-                                        <i className="fa-solid fa-chevron-down"></i>
-                                        <span>Veja abaixo</span>
+                    {/* ÁREA DO MAPA COM SCROLL */}
+                    <main className="flex-1 relative overflow-hidden w-full h-full">
+                        <div 
+                            ref={scrollContainerRef}
+                            className="absolute inset-0 overflow-auto no-scrollbar pt-24 pb-20 px-4"
+                        >
+                            {/* Container Flex que permite scroll horizontal */}
+                            <div className="flex justify-start min-w-max gap-8 pb-10">
+                                
+                                {/* COLUNA 1: DECK (Fixa a esquerda visualmente) */}
+                                <div className="flex flex-col items-center min-w-[100px]">
+                                    <span className="font-serif text-slate-400 font-bold tracking-widest uppercase text-[10px] mb-6 border-b border-slate-200 pb-1 px-2">Deck</span>
+                                    {TABLE_CONFIG.filter(t => t.zone === 'deck').map(t => (
+                                        <LongTable key={t.id} config={t} />
+                                    ))}
+                                </div>
+
+                                {/* Divisória Vertical */}
+                                <div className="w-[1px] bg-stone-300 h-[600px] mt-10 opacity-50 flex-shrink-0"></div>
+
+                                {/* ÁREA DO SALÃO (AGORA COM 3 COLUNAS) */}
+                                <div className="flex flex-col items-center">
+                                    <span className="font-serif text-slate-400 font-bold tracking-widest uppercase text-[10px] mb-6 border-b border-slate-200 pb-1 px-2">Salão</span>
+                                    
+                                    <div className="flex gap-8">
+                                        {/* SALÃO COLUNA 1: MESA 2 (SOZINHA) */}
+                                        <div className="flex flex-col items-center min-w-[100px]">
+                                            {TABLE_CONFIG.filter(t => t.zone === 'salao' && t.col === 1).map(t => (
+                                                <LongTable key={t.id} config={t} />
+                                            ))}
+                                        </div>
+
+                                        {/* SALÃO COLUNA 2: MESA 3 e 5 */}
+                                        <div className="flex flex-col items-center min-w-[100px]">
+                                            {TABLE_CONFIG.filter(t => t.zone === 'salao' && t.col === 2).map(t => (
+                                                <LongTable key={t.id} config={t} />
+                                            ))}
+                                        </div>
+
+                                        {/* SALÃO COLUNA 3: MESA 6 e 7 */}
+                                        <div className="flex flex-col items-center min-w-[100px]">
+                                            {TABLE_CONFIG.filter(t => t.zone === 'salao' && t.col === 3).map(t => (
+                                                <LongTable key={t.id} config={t} />
+                                            ))}
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                        )}
 
-                        <div className="flex-1 overflow-y-auto overflow-x-auto bg-[#F9F6F2] pt-28 pb-20">
-                            <div className="flex justify-start sm:justify-center px-8 min-w-max pb-8 items-stretch">
-                                <div className="flex flex-col items-center">
-                                    <span className="font-serif text-slate-500 font-bold tracking-widest uppercase text-xs mb-4">Deck</span>
-                                    <LongTable groupId={1} />
-                                </div>
-                                <div className="flex items-center px-8 relative">
-                                    <div className="h-4/5 w-[1px] bg-stone-800/20 absolute left-1/2 top-1/2 -translate-y-1/2"></div>
-                                </div>
-                                <div className="flex flex-col items-center">
-                                    <span className="font-serif text-slate-500 font-bold tracking-widest uppercase text-xs mb-4">Salão</span>
-                                    <div className="flex gap-12">
-                                        <LongTable groupId={2} />
-                                        <LongTable groupId={3} />
-                                    </div>
-                                </div>
+                                {/* Espaço extra para scroll confortável */}
+                                <div className="w-4 flex-shrink-0"></div>
                             </div>
-                            <div className="text-center text-slate-400 text-xs mt-4 flex items-center justify-center gap-2 sticky left-0 right-0">
-                                <i className="fa-solid fa-circle-info"></i>
-                                <span>Role para ver todas as mesas</span>
+                        </div>
+                        
+                        {/* Indicador de Scroll */}
+                        <div className="absolute bottom-4 left-0 right-0 flex justify-center pointer-events-none opacity-50">
+                            <div className="bg-slate-900/10 rounded-full px-3 py-1 flex items-center gap-2 text-[10px] text-slate-500 font-medium">
+                                <i className="fa-solid fa-arrows-left-right"></i>
+                                Arraste para ver mais
                             </div>
                         </div>
                     </main>
 
+                    {/* MODAL EDITAR */}
                     {editingSeat && (
                         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4" onClick={(e) => e.stopPropagation()}>
                             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in-95 duration-200">
@@ -358,3 +428,5 @@
     </script>
 </body>
 </html>
+
+
